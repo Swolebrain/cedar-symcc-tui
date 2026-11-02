@@ -7,8 +7,10 @@ use ratatui::{
     Frame,
 };
 
-use crate::state::{AnalysisOutput, AppState, Focus};
-use crate::widgets::focus_border_style;
+use crate::{
+    state::{AnalysisOutput, AppState, Focus},
+    widgets::focus_border_style,
+};
 
 /// Render the bordered, scrollable output pane into `area`.
 ///

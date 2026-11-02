@@ -153,22 +153,6 @@ impl RequestEnvEntry {
 pub enum SchemaLoad {
     /// No schema has been selected/loaded yet.
     NoneSelected,
-    /// A schema file has been selected and its load (file read + parse) is in
-    /// flight off the render path. No envs exist yet.
-    ///
-    /// While a schema is in this state the debounced scheduler suppresses
-    /// analysis entirely (see [`schedule_analysis`]), so no encoding can ever
-    /// run against a schema that is mid-swap.
-    ///
-    /// This is a modeled state: [`load_schema_under_cursor`] now reads + parses
-    /// synchronously, so production never rests here (there is no async loading
-    /// window). It is retained because the request-env pane renders it, the
-    /// scheduler defends against it, and the unit tests exercise that guard.
-    #[allow(dead_code)]
-    Loading {
-        /// The file whose load is in flight.
-        file: SchemaFile,
-    },
     /// The schema parsed successfully; `envs` are its enumerated request envs.
     Loaded {
         /// The file this schema was loaded from.
@@ -193,9 +177,9 @@ impl SchemaLoad {
     pub fn loaded_path(&self) -> Option<&Path> {
         match self {
             SchemaLoad::NoneSelected => None,
-            SchemaLoad::Loading { file }
-            | SchemaLoad::Loaded { file, .. }
-            | SchemaLoad::LoadFailed { file, .. } => Some(file.path.as_path()),
+            SchemaLoad::Loaded { file, .. } | SchemaLoad::LoadFailed { file, .. } => {
+                Some(file.path.as_path())
+            }
         }
     }
 
@@ -441,10 +425,6 @@ impl AppState {
 pub enum StateError {
     /// No schemas are available to load (the discovered list is empty).
     NoSchemas,
-    /// An action needed a successfully-loaded schema but none is loaded.
-    NoSchemaLoaded,
-    /// The loaded schema enumerates zero request environments.
-    NoEnvironments,
     /// Reading/parsing the selected schema failed; the rendered error text.
     SchemaLoadFailed(String),
     /// Discovering schema files under the root failed; the rendered I/O error.
@@ -457,10 +437,6 @@ impl std::fmt::Display for StateError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             StateError::NoSchemas => write!(f, "no schemas are available to load"),
-            StateError::NoSchemaLoaded => write!(f, "no schema is loaded"),
-            StateError::NoEnvironments => {
-                write!(f, "the loaded schema has no request environments")
-            }
             StateError::SchemaLoadFailed(err) => write!(f, "schema load failed: {err}"),
             StateError::DiscoveryFailed(err) => write!(f, "schema discovery failed: {err}"),
             StateError::NothingToDelete => write!(f, "nothing to delete"),
@@ -602,10 +578,8 @@ pub fn load_schema_under_cursor() -> Result<(), StateError> {
 
     // (3) Install the result and bump the generation. The single bump supersedes
     //     any analysis spawned against the previous schema, so its write-back is
-    //     dropped by the generation guard. Unlike the old async loader there is
-    //     no separate `Loading` scheduling epoch — the load happened
-    //     synchronously above with no analysis scheduled mid-load — so the
-    //     previous double-bump-on-swap is no longer needed.
+    //     dropped by the generation guard. The load happened synchronously
+    //     above with no analysis scheduled mid-load, so one bump suffices.
     let generation = {
         let mut s = lock();
         s.env_cursor = 0; // highlight the first env of the new list
@@ -623,32 +597,6 @@ pub fn load_schema_under_cursor() -> Result<(), StateError> {
     //     schema now that its envs are available.
     schedule_analysis(generation);
     Ok(())
-}
-
-/// Confirm the request env currently under the cursor.
-///
-/// The env cursor *is* the selected env (the analysis reads it), so confirming
-/// the highlighted env is a no-op: it changes no input and does not re-run
-/// analysis. This preserves the shipped behaviour where the env cursor and the
-/// analysis env are one and the same. It exists so the `Enter`/`Space` binding
-/// in the env pane has a well-defined action and can report the error cases.
-///
-/// # Errors
-///
-/// * [`StateError::NoSchemaLoaded`] if no schema is loaded.
-/// * [`StateError::NoEnvironments`] if the loaded schema has no request envs.
-pub fn select_env_under_cursor() -> Result<(), StateError> {
-    let s = lock();
-    match &s.schema_load {
-        SchemaLoad::Loaded { envs, .. } => {
-            if envs.is_empty() {
-                Err(StateError::NoEnvironments)
-            } else {
-                Ok(()) // the highlighted env is already the selected env
-            }
-        }
-        _ => Err(StateError::NoSchemaLoaded),
-    }
 }
 
 /// Move a cursor or scroll the output pane.
@@ -854,15 +802,13 @@ fn schedule_analysis(generation: u64) {
 async fn run_scheduled(generation: u64) {
     // A local plan so the (heavy) inputs are cloned once, under the lock, and
     // the async encode below runs entirely OFF the lock.
-    // The `Run` variant carries an owned `Schema` (large) while the others are
+    // The `Run` variant carries an owned `Schema` (large) while `Skip` is
     // tiny; the size gap is immaterial for a value built once per scheduled
     // analysis, so silence the enum-size lint rather than boxing.
     #[allow(clippy::large_enum_variant)]
     enum Plan {
         /// Preconditions unmet (no schema/env or empty policy): show `Empty`.
         Skip,
-        /// A schema load is in flight: keep `Running`, never run analysis.
-        Pending,
         /// Ready to encode.
         Run {
             src: String,
@@ -879,9 +825,6 @@ async fn run_scheduled(generation: u64) {
             return; // superseded during the debounce window
         }
         match &s.schema_load {
-            // A schema swap is in flight: suppress analysis entirely so none can
-            // run against the schema being replaced.
-            SchemaLoad::Loading { .. } => Plan::Pending,
             SchemaLoad::Loaded { schema, envs, .. } if !s.policy_input.trim().is_empty() => {
                 match envs.get(s.env_cursor) {
                     Some(entry) => Plan::Run {
@@ -902,7 +845,6 @@ async fn run_scheduled(generation: u64) {
     // (2) Run the (async) encode OFF the lock.
     let output = match plan {
         Plan::Skip => AnalysisOutput::Empty,
-        Plan::Pending => AnalysisOutput::Running,
         Plan::Run {
             src,
             schema,
@@ -1199,59 +1141,6 @@ mod tests {
     }
 
     #[test]
-    fn select_env_under_cursor_errs_without_schema() {
-        let _g = test_guard();
-        assert_eq!(select_env_under_cursor(), Err(StateError::NoSchemaLoaded));
-    }
-
-    #[test]
-    fn select_env_under_cursor_errs_with_no_environments() {
-        let _g = test_guard();
-        {
-            let mut s = lock();
-            s.schema_load = SchemaLoad::Loaded {
-                file: sf("s.cedarschema"),
-                schema: Arc::new(SCHEMA_SRC.parse().unwrap()),
-                envs: Arc::from(Vec::<RequestEnvEntry>::new()),
-            };
-        }
-        assert_eq!(select_env_under_cursor(), Err(StateError::NoEnvironments));
-    }
-
-    #[test]
-    fn select_env_under_cursor_noop_when_already_selected() {
-        let _g = test_guard();
-        seed_loaded();
-        let gen_before = lock().generation;
-        select_env_under_cursor().unwrap();
-        assert_eq!(
-            lock().generation,
-            gen_before,
-            "confirming the highlighted env is a no-op"
-        );
-    }
-
-    #[test]
-    fn select_env_leaves_policy_input_byte_identical() {
-        let _g = test_guard();
-        seed_loaded();
-        let policy = "permit(principal, action, resource) when { 1 == 1 };".to_string();
-        {
-            let mut s = lock();
-            s.policy_input = policy.clone();
-            s.output = AnalysisOutput::Running;
-        }
-        select_env_under_cursor().unwrap();
-        let snap = snapshot();
-        assert_eq!(
-            snap.policy_input(),
-            policy,
-            "policy input must be byte-identical"
-        );
-        assert_eq!(*snap.output(), AnalysisOutput::Running);
-    }
-
-    #[test]
     fn load_schema_under_cursor_no_schemas_errs() {
         let _g = test_guard();
         // Errors before any load/schedule, so no runtime is needed.
@@ -1317,7 +1206,7 @@ mod tests {
         );
 
         // Switch to schema 1 (b): move the cursor, then load. Output is wiped;
-        // the load is synchronous so the resting state is Loaded (not Loading).
+        // the load is synchronous so the resting state is Loaded.
         {
             let mut s = lock();
             s.focus = Focus::SchemaSelector;
@@ -1392,32 +1281,6 @@ mod tests {
             "current generation result is accepted"
         );
         assert_eq!(snapshot().output_scroll(), 0, "scroll reset on accept");
-    }
-
-    #[tokio::test]
-    async fn loading_state_suppresses_analysis() {
-        // A schema swap installs SchemaLoad::Loading; while in that state the
-        // scheduler must NOT run an analysis. It leaves the pane in Running —
-        // never a stale/error result — and a real analysis follows once the
-        // load lands.
-        let _g = test_guard();
-        {
-            let mut s = lock();
-            s.schema_load = SchemaLoad::Loading {
-                file: sf("x.cedarschema"),
-            };
-            s.policy_input = "permit(principal, action, resource);".into();
-            s.output = AnalysisOutput::Encoded {
-                smtlib: "stale".into(),
-            };
-            s.generation = 3;
-        }
-        run_scheduled(3).await;
-        assert_eq!(
-            *snapshot().output(),
-            AnalysisOutput::Running,
-            "Loading suppresses analysis and shows Running, not a stale/error result"
-        );
     }
 
     #[tokio::test]

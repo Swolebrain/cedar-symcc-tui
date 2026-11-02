@@ -8,8 +8,10 @@ use ratatui::{
     Frame,
 };
 
-use crate::state::{AnalysisMode, AppState, Focus};
-use crate::widgets::focus_border_style;
+use crate::{
+    state::{AnalysisMode, AppState, Focus},
+    widgets::focus_border_style,
+};
 
 /// Label drawn for the clear button in the footer row.
 const CLEAR_LABEL: &str = " [ Clear ] ";

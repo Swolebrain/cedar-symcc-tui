@@ -21,10 +21,10 @@ use ratatui::{
     Frame,
 };
 
-use crate::state::{
-    self, AnalysisMode, AppState, Direction, Edit, Focus, FocusMove, Nav, StateError,
+use crate::{
+    state::{self, AnalysisMode, AppState, Direction, Edit, Focus, FocusMove, Nav, StateError},
+    widgets,
 };
-use crate::widgets;
 
 /// One frame's worth of layout hit-test rectangles that the event loop needs to
 /// remember between draws (the footer buttons, for mouse clicks).
@@ -60,8 +60,6 @@ pub enum Action {
     ScrollOutput(Direction),
     /// Load the schema currently under the schema cursor (`Enter`).
     LoadSelectedSchema,
-    /// Select the request env currently under the env cursor (`Enter`/`Space`).
-    SelectEnv,
     /// Clear the policy input and output.
     ClearPolicy,
     /// Switch the analysis mode used by the encoder.
@@ -115,7 +113,6 @@ pub fn route_key(focus: Focus, key: KeyEvent) -> Option<Action> {
         Focus::EnvSelector => match key.code {
             KeyCode::Up | KeyCode::Char('k') => Some(Action::MoveEnvCursor(Direction::Up)),
             KeyCode::Down | KeyCode::Char('j') => Some(Action::MoveEnvCursor(Direction::Down)),
-            KeyCode::Enter | KeyCode::Char(' ') => Some(Action::SelectEnv),
             _ => None,
         },
         Focus::OutputPane => match key.code {
@@ -174,7 +171,6 @@ pub fn apply_action(action: Action) -> Result<(), StateError> {
             Direction::Up => Nav::PageUp,
             Direction::Down => Nav::PageDown,
         }),
-        Action::SelectEnv => state::select_env_under_cursor(),
         Action::ClearPolicy => state::clear_policy(),
         Action::SetMode(mode) => state::set_analysis_mode(mode),
         Action::PolicyChar(c) => state::edit_policy(Edit::Char(c)),
@@ -233,7 +229,7 @@ fn render_footer(frame: &mut Frame, area: Rect, s: &AppState) {
         "Esc:quit"
     };
     let help = format!(
-        "Tab/S-Tab:focus  ↑↓/kj:move  Enter:load/select  Space:env  \
+        "Tab/S-Tab:focus  ↑↓/kj:move  Enter:load  \
          PgUp/PgDn:scroll  Ctrl+L:clear  Ctrl+C/Ctrl+Q:quit  {esc}"
     );
     let footer = Paragraph::new(Span::styled(
@@ -343,10 +339,7 @@ mod tests {
             route_key(Focus::SchemaSelector, key(KeyCode::Enter)),
             Some(Action::LoadSelectedSchema)
         );
-        assert_eq!(
-            route_key(Focus::EnvSelector, key(KeyCode::Char(' '))),
-            Some(Action::SelectEnv)
-        );
+        assert_eq!(route_key(Focus::EnvSelector, key(KeyCode::Char(' '))), None);
     }
 
     #[test]
@@ -387,10 +380,7 @@ mod tests {
             route_key(Focus::PolicyInput, key(KeyCode::Char('x'))),
             Some(Action::PolicyChar('x'))
         ));
-        assert!(matches!(
-            route_key(Focus::EnvSelector, key(KeyCode::Enter)),
-            Some(Action::SelectEnv)
-        ));
+        assert_eq!(route_key(Focus::EnvSelector, key(KeyCode::Enter)), None);
         assert!(matches!(
             route_key(Focus::SchemaSelector, key(KeyCode::Down)),
             Some(Action::MoveSchemaCursor(Direction::Down))

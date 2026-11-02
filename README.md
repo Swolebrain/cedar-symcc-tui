@@ -57,7 +57,6 @@ interactive terminal` rather than failing with an opaque OS error.
 | `↑`/`k`, `↓`/`j` | Schemas | Move cursor |
 | `Enter` | Schemas | Load schema under cursor |
 | `↑`/`k`, `↓`/`j` | Request envs | Move cursor |
-| `Enter` / `Space` | Request envs | Select env under cursor |
 | `↑`/`k`, `↓`/`j` | Output | Scroll |
 | `Enter` / `Space` | Clear button | Clear policy + output |
 | char, `Enter`, `Backspace` | Policy editor | Insert char / newline, delete |
@@ -99,7 +98,7 @@ encoding emits declarations, `(assert …)`, and `(check-sat)`.
 - `state/mod.rs` — a **private process-global** `AppState` behind a single
   `LazyLock<Mutex<…>>` that never escapes the module. Callers read via
   `snapshot()` and mutate via high-level **domain actions** (`init`,
-  `load_schema_under_cursor`, `select_env_under_cursor`, `navigate`,
+  `load_schema_under_cursor`, `navigate`,
   `edit_policy`, `handle_paste`, `clear_policy`, `cycle_focus`,
   `set_analysis_mode`) that each return `Result<(), StateError>`. Enum-modeled
   state makes invalid combinations unrepresentable.

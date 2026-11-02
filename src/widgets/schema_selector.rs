@@ -8,8 +8,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::state::AppState;
-use crate::widgets::focus_border_style;
+use crate::{state::AppState, widgets::focus_border_style};
 
 /// Marker shown on the row whose schema is actually loaded.
 const LOADED_MARKER: &str = "● ";

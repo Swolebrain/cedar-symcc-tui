@@ -23,20 +23,20 @@
 //! without needing an extra keypress. That periodic tick is the redraw
 //! mechanism; no separate notification channel is needed.
 
-use std::io::{self, IsTerminal, Stdout};
-use std::time::Duration;
+use std::{
+    io::{self, IsTerminal, Stdout},
+    time::Duration,
+};
 
-use crossterm::event::{
-    self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-    Event, KeyEventKind, MouseButton, MouseEventKind,
+use crossterm::{
+    event::{
+        self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+        Event, KeyEventKind, MouseButton, MouseEventKind,
+    },
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use crossterm::execute;
-use crossterm::terminal::{
-    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
-};
-use ratatui::backend::CrosstermBackend;
-use ratatui::layout::Position;
-use ratatui::Terminal;
+use ratatui::{backend::CrosstermBackend, layout::Position, Terminal};
 
 use crate::state::{AnalysisMode, Focus};
 

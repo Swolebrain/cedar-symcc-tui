@@ -9,8 +9,10 @@ use ratatui::{
     Frame,
 };
 
-use crate::state::{AppState, Focus, SchemaLoad};
-use crate::widgets::{focus_border_style, truncate_label};
+use crate::{
+    state::{AppState, Focus, SchemaLoad},
+    widgets::{focus_border_style, truncate_label},
+};
 
 /// Render the bordered request-environment list into `area`.
 ///
@@ -18,8 +20,6 @@ use crate::widgets::{focus_border_style, truncate_label};
 /// [`AppState::focus`] for the border highlight. Behaviour by load state:
 ///
 /// * [`SchemaLoad::NoneSelected`] → a `no schema selected` placeholder.
-/// * [`SchemaLoad::Loading`] → a `loading…` placeholder while the load is in
-///   flight.
 /// * [`SchemaLoad::LoadFailed`] → the (wrapped) load error message.
 /// * [`SchemaLoad::Loaded`] → a scrolling [`List`] of the envs' `label`s, with
 ///   the [`env_cursor`](AppState::env_cursor) row highlighted.
@@ -38,13 +38,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     match state.schema_load() {
         SchemaLoad::NoneSelected => {
             let p = Paragraph::new("no schema selected")
-                .block(block)
-                .style(Style::default().fg(Color::DarkGray))
-                .wrap(Wrap { trim: true });
-            frame.render_widget(p, area);
-        }
-        SchemaLoad::Loading { .. } => {
-            let p = Paragraph::new("loading…")
                 .block(block)
                 .style(Style::default().fg(Color::DarkGray))
                 .wrap(Wrap { trim: true });

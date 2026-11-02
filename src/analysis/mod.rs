@@ -15,14 +15,12 @@
 // until the UI lands.
 #![allow(dead_code)]
 
-use std::path::Path;
-use std::str::FromStr;
+use std::{path::Path, str::FromStr};
 
 use cedar_policy::{PolicySet, RequestEnv, Schema, ValidationMode, Validator};
-use cedar_policy_symcc::solver::WriterSolver;
 use cedar_policy_symcc::{
-    always_allows_asserts, err::Error as SymccError, never_matches_asserts, CedarSymCompiler,
-    CompiledPolicy, CompiledPolicySet, WellFormedAsserts,
+    always_allows_asserts, err::Error as SymccError, never_matches_asserts, solver::WriterSolver,
+    CedarSymCompiler, CompiledPolicy, CompiledPolicySet, WellFormedAsserts,
 };
 
 use crate::state::{
@@ -391,8 +389,9 @@ fn normalize_smtlib(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::path::PathBuf;
+
+    use super::*;
 
     /// A minimal but valid Cedar schema (human syntax) with one action and a
     /// `Long` attribute, enough to enumerate a request env AND to make a
