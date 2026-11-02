@@ -22,7 +22,7 @@ use ratatui::{
 };
 
 use crate::{
-    state::{self, AnalysisMode, AppState, Direction, Edit, Focus, FocusMove, Nav, StateError},
+    state::{self, AnalysisMode, AppState, Edit, Focus, FocusMove, Nav, StateError},
     widgets,
 };
 
@@ -52,12 +52,8 @@ pub enum Action {
     FocusNext,
     /// Move keyboard focus to the previous widget (`Shift+Tab`).
     FocusPrev,
-    /// Move the schema-list cursor.
-    MoveSchemaCursor(Direction),
-    /// Move the request-env-list cursor.
-    MoveEnvCursor(Direction),
-    /// Scroll the output pane.
-    ScrollOutput(Direction),
+    /// Move a cursor or scroll the output pane; see [`state::navigate`].
+    Navigate(Nav),
     /// Load the schema currently under the schema cursor (`Enter`).
     LoadSelectedSchema,
     /// Clear the policy input and output.
@@ -94,8 +90,8 @@ pub fn route_key(focus: Focus, key: KeyEvent) -> Option<Action> {
         KeyCode::Tab => return Some(Action::FocusNext),
         KeyCode::BackTab => return Some(Action::FocusPrev),
         // PageUp/PageDown scroll the output pane regardless of focus.
-        KeyCode::PageUp => return Some(Action::ScrollOutput(Direction::Up)),
-        KeyCode::PageDown => return Some(Action::ScrollOutput(Direction::Down)),
+        KeyCode::PageUp => return Some(Action::Navigate(Nav::PageUp)),
+        KeyCode::PageDown => return Some(Action::Navigate(Nav::PageDown)),
         // Esc quits UNLESS the policy editor is focused, so it can never destroy
         // a paste/edit in progress (documented in the footer).
         KeyCode::Esc if !matches!(focus, Focus::PolicyInput) => return Some(Action::Quit),
@@ -105,19 +101,19 @@ pub fn route_key(focus: Focus, key: KeyEvent) -> Option<Action> {
     // ---- Focus-specific bindings ----------------------------------------
     match focus {
         Focus::SchemaSelector => match key.code {
-            KeyCode::Up | KeyCode::Char('k') => Some(Action::MoveSchemaCursor(Direction::Up)),
-            KeyCode::Down | KeyCode::Char('j') => Some(Action::MoveSchemaCursor(Direction::Down)),
+            KeyCode::Up | KeyCode::Char('k') => Some(Action::Navigate(Nav::Up)),
+            KeyCode::Down | KeyCode::Char('j') => Some(Action::Navigate(Nav::Down)),
             KeyCode::Enter => Some(Action::LoadSelectedSchema),
             _ => None,
         },
         Focus::EnvSelector => match key.code {
-            KeyCode::Up | KeyCode::Char('k') => Some(Action::MoveEnvCursor(Direction::Up)),
-            KeyCode::Down | KeyCode::Char('j') => Some(Action::MoveEnvCursor(Direction::Down)),
+            KeyCode::Up | KeyCode::Char('k') => Some(Action::Navigate(Nav::Up)),
+            KeyCode::Down | KeyCode::Char('j') => Some(Action::Navigate(Nav::Down)),
             _ => None,
         },
         Focus::OutputPane => match key.code {
-            KeyCode::Up | KeyCode::Char('k') => Some(Action::ScrollOutput(Direction::Up)),
-            KeyCode::Down | KeyCode::Char('j') => Some(Action::ScrollOutput(Direction::Down)),
+            KeyCode::Up | KeyCode::Char('k') => Some(Action::Navigate(Nav::Up)),
+            KeyCode::Down | KeyCode::Char('j') => Some(Action::Navigate(Nav::Down)),
             _ => None,
         },
         Focus::ClearButton => match key.code {
@@ -153,24 +149,16 @@ pub fn route_key(focus: Focus, key: KeyEvent) -> Option<Action> {
 /// handled by the event loop *before* this is called, so its arm here is an
 /// inert `Ok`.
 ///
-/// Navigation maps onto [`state::navigate`]: schema/env cursor moves become
-/// [`Nav::Up`]/[`Nav::Down`] (dispatched on the focused pane), and output scroll
-/// — which also fires from `PageUp`/`PageDown` in any focus — becomes
-/// [`Nav::PageUp`]/[`Nav::PageDown`] so it always targets the output pane.
+/// Navigation passes straight through to [`state::navigate`]: [`Nav::Up`]/
+/// [`Nav::Down`] act on the focused pane (schema cursor, env cursor, or output
+/// scroll), and [`Nav::PageUp`]/[`Nav::PageDown`] always scroll the output pane.
 pub fn apply_action(action: Action) -> Result<(), StateError> {
     match action {
         // Quit is intercepted by the event loop; nothing to do at the state layer.
         Action::Quit => Ok(()),
         Action::FocusNext => state::cycle_focus(FocusMove::Next),
         Action::FocusPrev => state::cycle_focus(FocusMove::Prev),
-        Action::MoveSchemaCursor(dir) | Action::MoveEnvCursor(dir) => state::navigate(match dir {
-            Direction::Up => Nav::Up,
-            Direction::Down => Nav::Down,
-        }),
-        Action::ScrollOutput(dir) => state::navigate(match dir {
-            Direction::Up => Nav::PageUp,
-            Direction::Down => Nav::PageDown,
-        }),
+        Action::Navigate(nav) => state::navigate(nav),
         Action::ClearPolicy => state::clear_policy(),
         Action::SetMode(mode) => state::set_analysis_mode(mode),
         Action::PolicyChar(c) => state::edit_policy(Edit::Char(c)),
@@ -313,11 +301,11 @@ mod tests {
     fn pageup_pagedown_scroll_output_from_any_focus() {
         assert_eq!(
             route_key(Focus::PolicyInput, key(KeyCode::PageUp)),
-            Some(Action::ScrollOutput(Direction::Up))
+            Some(Action::Navigate(Nav::PageUp))
         );
         assert_eq!(
             route_key(Focus::EnvSelector, key(KeyCode::PageDown)),
-            Some(Action::ScrollOutput(Direction::Down))
+            Some(Action::Navigate(Nav::PageDown))
         );
     }
 
@@ -325,15 +313,15 @@ mod tests {
     fn list_navigation_uses_arrows_and_kj() {
         assert_eq!(
             route_key(Focus::SchemaSelector, key(KeyCode::Down)),
-            Some(Action::MoveSchemaCursor(Direction::Down))
+            Some(Action::Navigate(Nav::Down))
         );
         assert_eq!(
             route_key(Focus::SchemaSelector, key(KeyCode::Char('k'))),
-            Some(Action::MoveSchemaCursor(Direction::Up))
+            Some(Action::Navigate(Nav::Up))
         );
         assert_eq!(
             route_key(Focus::EnvSelector, key(KeyCode::Char('j'))),
-            Some(Action::MoveEnvCursor(Direction::Down))
+            Some(Action::Navigate(Nav::Down))
         );
         assert_eq!(
             route_key(Focus::SchemaSelector, key(KeyCode::Enter)),
@@ -383,7 +371,7 @@ mod tests {
         assert_eq!(route_key(Focus::EnvSelector, key(KeyCode::Enter)), None);
         assert!(matches!(
             route_key(Focus::SchemaSelector, key(KeyCode::Down)),
-            Some(Action::MoveSchemaCursor(Direction::Down))
+            Some(Action::Navigate(Nav::Down))
         ));
     }
 }

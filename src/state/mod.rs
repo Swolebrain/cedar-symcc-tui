@@ -277,16 +277,6 @@ impl Focus {
     }
 }
 
-/// A cursor-movement direction shared by the list selectors and the output
-/// scroll.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Direction {
-    /// Toward the start of the list / top of the pane.
-    Up,
-    /// Toward the end of the list / bottom of the pane.
-    Down,
-}
-
 /// A navigation intent handed to [`navigate`].
 ///
 /// `Up`/`Down` are single-line moves that act on the *focused* pane (schema
