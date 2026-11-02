@@ -1,0 +1,24 @@
+[package]
+name = "cedar-symcc-tui"
+edition = "2021"
+version = "0.1.0"
+description = "Terminal UI for inspecting the SMT-LIB symbolic compilation of Cedar policies"
+
+# The examples/ directory holds third-party Cedar schema/policy data (not Rust source), but Cargo
+# auto-discovers example TARGETS there and would try to compile any .rs file. Disable that so the
+# data directory is never treated as example crates.
+autoexamples = false
+
+# Keep the crate internal-only; never publish to crates.io.
+publish = false
+
+[dependencies]
+cedar-policy-symcc = "0.5.3"
+cedar-policy = "4.11"
+ratatui = "0.30"
+crossterm = "0.29"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+miette = "7"
+
+[profile.release]
+# debug = "limited"
